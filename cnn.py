@@ -18,14 +18,14 @@ tf.app.flags.DEFINE_integer('sent_len', 257, 'Input sentence length (after paddi
 tf.app.flags.DEFINE_float('l2_reg', 1e-5, 'l2 regularization weight')
 
 
-def _variable_on_cpu(name, shape, initializer):
-    with tf.device('/cpu:0'):
+def _variable_on_cpu(name, shape, initializer, device='/gpu:0'):
+    with tf.device(device):
         var = tf.get_variable(name, shape, initializer=initializer)
     return var
 
 
-def _variable_with_weight_decay(name, shape, initializer, wd):
-    var = _variable_on_cpu(name, shape, initializer)
+def _variable_with_weight_decay(name, shape, initializer, wd, device='/gpu:0'):
+    var = _variable_on_cpu(name, shape, initializer, device=device)
     if wd is not None and wd != 0.:
         weight_decay = tf.multiply(tf.nn.l2_loss(var), wd, name='weight_loss')
     else:
@@ -51,7 +51,7 @@ class Model(object):
             self.dropout = config['dropout']
         self.build_graph()
 
-    def build_graph(self):
+    def build_graph(self, device='/gpu:0'):
         """ Build the computation graph. """
         self._inputs = tf.placeholder(dtype=tf.int64, shape=[None, self.sent_len], name='input_x')
         self._labels = tf.placeholder(dtype=tf.float32, shape=[None, self.num_classes], name='input_y')
@@ -60,7 +60,8 @@ class Model(object):
         # lookup layer
         with tf.variable_scope('embedding') as scope:
             self._W_emb = _variable_on_cpu(name='embedding', shape=[self.vocab_size, self.emb_size],
-                                           initializer=tf.random_uniform_initializer(minval=-1.0, maxval=1.0))
+                                           initializer=tf.random_uniform_initializer(minval=-1.0, maxval=1.0),
+                                           device=device)
             # sent_batch is of shape: (batch_size, sent_len, emb_size, 1), in order to use conv2d
             sent_batch = tf.nn.embedding_lookup(params=self._W_emb, ids=self._inputs)
             sent_batch = tf.expand_dims(sent_batch, -1)
@@ -76,7 +77,7 @@ class Model(object):
                     wd=self.l2_reg)
                 losses.append(wd)
                 conv = tf.nn.conv2d(input=sent_batch, filter=kernel, strides=[1,1,1,1], padding='VALID')
-                biases = _variable_on_cpu('biases_'+str(k_size), [self.num_kernel], tf.constant_initializer(0.0))
+                biases = _variable_on_cpu('biases_'+str(k_size), [self.num_kernel], tf.constant_initializer(0.0), device=device)
                 bias = tf.nn.bias_add(conv, biases)
                 relu = tf.nn.relu(bias, name=scope.name)
                 # shape of relu: [batch_size, conv_len, 1, num_kernel]
@@ -104,7 +105,8 @@ class Model(object):
                                                 initializer=tf.truncated_normal_initializer(stddev=0.05), wd=self.l2_reg)
             losses.append(wd)
             biases = _variable_on_cpu('biases', shape=[self.num_classes],
-                                      initializer=tf.constant_initializer(0.01))
+                                      initializer=tf.constant_initializer(0.01),
+                                      device=device)
             self.logits = tf.nn.bias_add(tf.matmul(pool_dropout, W), biases, name='logits')
 
         # loss
