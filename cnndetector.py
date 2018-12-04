@@ -2,6 +2,7 @@
 
 import os
 import tensorflow as tf
+from pathlib import Path
 import numpy as np
 from codecs import open as codecs_open
 import time
@@ -16,8 +17,27 @@ THIS_DIR = os.path.abspath(os.path.dirname(__file__))
 ENCODING = 'utf-8'
 
 
-def predict(x, config, raw_text=True):
+def predict(x, config, raw_text=True, train_dir="models", data_dir="data", batch_size=100, num_epoch=50, use_pretrain=False, vocab_size=4090,
+          init_lr=0.01, log_step=10, summary_step=200, checkpoint_step=200,
+          tolerance_step=500, lr_decay=0.95, emb_size=300, num_kernel=100, min_window=3, max_window=5,
+          sent_len=257, l2_reg=1e-5, optimizer='adam', dropout=0.5):
     """ Build evaluation graph and run. """
+    if config is None:
+        #try to load it
+        config = load(os.path.join(train_dir, 'flags.cPickle'))
+        if config is None:
+            config = get_config(train_dir, data_dir, batch_size, num_epoch, use_pretrain, vocab_size,
+                init_lr, log_step, summary_step, checkpoint_step, tolerance_step, lr_decay, emb_size, num_kernel, min_window,
+                max_window,sent_len, l2_reg, optimizer, dropout)
+        if config is not None:
+            if train_dir is not None:
+                config['train_dir'] = train_dir
+            if data_dir is not None:
+                config['data_dir'] = data_dir
+    else:
+        train_dir = config['train_dir']
+        data_dir = config['data_dir']
+
     if raw_text:
         vocab = VocabLoader(config['data_dir'])
         x = vocab.text2id(x)
@@ -35,8 +55,13 @@ def predict(x, config, raw_text=True):
         with tf.Session() as sess:
             train_dir = config['train_dir']
             ckpt = tf.train.get_checkpoint_state(train_dir)
+            #Since this might be on a different FS mmodify the path
+            #Todo: check for this
+            model_filename = Path(ckpt.model_checkpoint_path).name
+            model_file = os.path.join(train_dir, model_filename)
+
             if ckpt and ckpt.model_checkpoint_path:
-                saver.restore(sess, ckpt.model_checkpoint_path)
+                saver.restore(sess, model_file)
             else:
                 raise IOError("Loading checkpoint file failed!")
 
@@ -70,18 +95,10 @@ def load_language_codes():
 def _summary(name, value):
     return tf.Summary(value=[tf.Summary.Value(tag=name, simple_value=value)])
 
-
-def train(train_dir="models", data_dir="data", batch_size=100, num_epoch=50, use_pretrain=False, vocab_size=4090,
+def get_config(train_dir="models", data_dir="data", batch_size=100, num_epoch=50, use_pretrain=False, vocab_size=4090,
           init_lr=0.01, log_step=10, summary_step=200, checkpoint_step=200,
           tolerance_step=500, lr_decay=0.95, emb_size=300, num_kernel=100, min_window=3, max_window=5,
           sent_len=257, l2_reg=1e-5, optimizer='adam', dropout=0.5):
-    # train_dir
-    timestamp = str(int(time.time()))
-    out_dir = os.path.abspath(os.path.join(train_dir, timestamp))
-    #abs_data_dir = os.path.abspath(os.path.join(data_dir, timestamp))
-    # save flags
-    if not os.path.exists(out_dir):
-        mkdir_p(out_dir)
     config = dict()
     config['train_dir'] = train_dir
     config['data_dir'] = data_dir
@@ -103,12 +120,29 @@ def train(train_dir="models", data_dir="data", batch_size=100, num_epoch=50, use
     config['l2_reg'] = l2_reg
     config['optimizer'] = optimizer
     config['dropout'] = dropout
+    return config
+
+def train(train_dir="models", data_dir="data", batch_size=100, num_epoch=50, use_pretrain=False, vocab_size=4090,
+          init_lr=0.01, log_step=10, summary_step=200, checkpoint_step=200,
+          tolerance_step=500, lr_decay=0.95, emb_size=300, num_kernel=100, min_window=3, max_window=5,
+          sent_len=257, l2_reg=1e-5, optimizer='adam', dropout=0.5):
+    # train_dir
+    timestamp = str(int(time.time()))
+    out_dir = os.path.abspath(os.path.join(train_dir, timestamp))
+    #abs_data_dir = os.path.abspath(os.path.join(data_dir, timestamp))
+    # save flags
+    if not os.path.exists(out_dir):
+        mkdir_p(out_dir)
+    config = get_config(train_dir, data_dir, batch_size, num_epoch, use_pretrain, vocab_size,
+        init_lr, log_step, summary_step, checkpoint_step, tolerance_step, lr_decay, emb_size, num_kernel, min_window,
+        max_window,sent_len, l2_reg, optimizer, dropout)
 
     save(config, os.path.join(out_dir, 'flags.cPickle'))
     print("Parameters:")
     for k in config:
         print('%20s %r' % (k, config[k]))
-    with tf.device('/gpu:0'):
+    device = '/gpu:0' if tf.test.is_gpu_available() else '/cpu:0'
+    with tf.device(device):
             
         # load data
         print("Preparing train data ...")

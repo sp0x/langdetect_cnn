@@ -1,0 +1,3 @@
+model_checkpoint_path: "/home/v_g_vasilev94/cnn/langdetect_cnn/models/1543499025/model.ckpt-293"
+all_model_checkpoint_paths: "/home/v_g_vasilev94/cnn/langdetect_cnn/models/1543499025/model.ckpt-200"
+all_model_checkpoint_paths: "/home/v_g_vasilev94/cnn/langdetect_cnn/models/1543499025/model.ckpt-293"

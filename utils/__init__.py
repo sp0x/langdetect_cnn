@@ -132,7 +132,6 @@ def load(path):
         out = pickle.load(f)
     return out
 
-
 class VocabLoader(object):
     """Load vocabulary"""
 
@@ -167,7 +166,7 @@ class VocabLoader(object):
         toks = char_tokenizer(raw_text)
         toks_len = len(toks)
         if toks_len <= max_sent_len:
-            pad_left = (max_sent_len - toks_len) / 2
+            pad_left = int(int((max_sent_len - toks_len)) / int(2))
             pad_right = int(np.ceil((max_sent_len - toks_len) / 2.0))
         else:
             return None
